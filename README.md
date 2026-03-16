@@ -10,6 +10,9 @@ A WhatsApp bot that watches your "Saved Messages" chat (messages you send to you
 |---|---|
 | Node.js | 18 or newer |
 | yt-dlp | latest (must be in PATH) |
+| ffmpeg | latest (must be in PATH) |
+
+> **Why ffmpeg?** yt-dlp downloads Instagram DASH streams (separate video + audio), merges them, and re-encodes to H.264 + AAC so WhatsApp accepts the file. Without ffmpeg the send will fail.
 
 ### Install yt-dlp on Windows
 
@@ -22,10 +25,21 @@ winget install yt-dlp
 # Place yt-dlp.exe somewhere in your PATH (e.g. C:\Windows\System32)
 ```
 
-Verify it works:
+### Install ffmpeg on Windows
+
+```powershell
+# Option 1 — winget (recommended)
+winget install Gyan.FFmpeg
+
+# Option 2 — download from https://ffmpeg.org/download.html
+# Extract and add the bin/ folder to your PATH
+```
+
+Verify both work:
 
 ```powershell
 yt-dlp --version
+ffmpeg -version
 ```
 
 ---
@@ -125,5 +139,7 @@ instagram-reel-bot/
 |---|---|
 | QR code not appearing | Delete `.wwebjs_auth/` and restart |
 | `yt-dlp not found` | Ensure yt-dlp is installed and in PATH |
-| Video download fails | Try adding `--cookies-from-browser chrome` to the yt-dlp command |
-| Bot doesn't react to messages | Verify `MY_NUMBER` in `.env` matches exactly (digits only) |
+| `ffmpeg not found` / merge error | Install ffmpeg and ensure it is in PATH (`winget install Gyan.FFmpeg`) |
+| WhatsApp rejects the video (`t: t` error) | ffmpeg is not installed or not in PATH — the bot re-encodes to H.264/AAC which requires ffmpeg |
+| Video download fails | Try adding `--cookies-from-browser chrome` to the yt-dlp command in `index.js` |
+| Bot doesn't react to messages | Verify `MY_NUMBER` in `.env` matches exactly (digits only, no `+`) |

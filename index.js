@@ -17,6 +17,14 @@ if (!MY_NUMBER) {
 const TEMP_DIR = path.join(__dirname, 'temp');
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 
+// yt-dlp path: try PATH first, fall back to common WinGet install location
+const YTDLP_BIN =
+  process.env.YTDLP_PATH ||
+  'C:\\Users\\Yugi\\AppData\\Local\\Microsoft\\WinGet\\Links\\yt-dlp.exe';
+
+// Only process messages sent AFTER the bot started (ignore replayed history)
+const BOT_START_TIME = Date.now();
+
 // Instagram reel / post URL pattern
 const INSTAGRAM_REGEX =
   /https?:\/\/(?:www\.)?instagram\.com\/(?:reel|p)\/[A-Za-z0-9_-]+\/?/;
@@ -29,11 +37,12 @@ if (!fs.existsSync(TEMP_DIR)) {
 
 // ─── Check yt-dlp availability ───────────────────────────────────────────────
 
-exec('yt-dlp --version', (err, stdout) => {
+exec(`"${YTDLP_BIN}" --version`, (err, stdout) => {
   if (err) {
     console.warn(
-      '⚠️  WARNING: yt-dlp not found in PATH. Downloads will fail.\n' +
-        '   Install it: winget install yt-dlp   OR   https://github.com/yt-dlp/yt-dlp/releases'
+      '⚠️  WARNING: yt-dlp not found. Downloads will fail.\n' +
+        `   Tried: ${YTDLP_BIN}\n` +
+        '   Set YTDLP_PATH in .env or install: winget install yt-dlp'
     );
   } else {
     console.log(`✅ yt-dlp found: v${stdout.trim()}`);
@@ -72,6 +81,10 @@ client.on('message_create', async (msg) => {
   // Ignore messages that aren't from/to self chat (i.e. "Saved Messages")
   if (msg.from !== selfId) return;
 
+  // Ignore messages sent before the bot started (avoid replaying history)
+  const msgTime = (msg.timestamp || 0) * 1000;
+  if (msgTime < BOT_START_TIME) return;
+
   const body = msg.body || '';
   const match = body.match(INSTAGRAM_REGEX);
   if (!match) return;
@@ -88,14 +101,19 @@ client.on('message_create', async (msg) => {
   downloadReel(url, outFile)
     .then(async () => {
       // Load and send the video
-      const media = MessageMedia.fromFilePath(outFile);
+      console.log(`📂 Loading file: ${outFile} (${fs.statSync(outFile).size} bytes)`);
+      const media = await MessageMedia.fromFilePath(outFile);
+      console.log(`📤 Sending media, mimetype: ${media.mimetype}, size: ${media.data?.length}`);
       await chat.sendMessage(media, { sendMediaAsDocument: false });
       console.log(`✅ Sent reel to ${msg.from}`);
     })
     .catch(async (err) => {
-      const reason = err.message || String(err);
-      console.error('❌ Download failed:', reason);
-      await chat.sendMessage(`❌ Download failed: ${reason}`);
+      console.error('❌ Full error object:', err);
+      console.error('❌ Error name:', err?.name);
+      console.error('❌ Error message:', err?.message);
+      console.error('❌ Error stack:', err?.stack);
+      const reason = err?.message || String(err);
+      await chat.sendMessage(`❌ Failed: ${reason}`);
     })
     .finally(() => {
       // Clean up temp file whether success or failure
@@ -116,10 +134,12 @@ function downloadReel(url, outFile) {
       'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
 
     const cmd = [
-      'yt-dlp',
+      `"${YTDLP_BIN}"`,
       `--output "${outFile}"`,
       '--merge-output-format mp4',
       `-f "${format}"`,
+      // Force H.264 + AAC so WhatsApp Web accepts the video
+      '--postprocessor-args', '"ffmpeg:-c:v libx264 -c:a aac -movflags +faststart"',
       `"${url}"`,
     ].join(' ');
 
